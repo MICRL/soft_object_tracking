@@ -10,6 +10,10 @@ private:
     int mechod = CV_TM_CCORR_NORMED;
     double thresh = 0.85;
     cv::Mat result;
+    int dist(Rect2d p1, Point p2)
+    {
+        return ( (p1.x - p2.x)*(p1.x - p2.x) + (p1.y - p2.y)*(p1.y - p2.y) );
+    }
 public:
     TpMatching(){};
     TpMatching(int mechod,double thresh)
@@ -28,9 +32,8 @@ public:
         /// Do the Matching and Normalize
         matchTemplate( src, tp, result, mechod );
         normalize( result, result, 0, 1, NORM_MINMAX, -1, Mat() );
-        double thresh = 0.85;
+        double thresh = 0.90;
         threshold(result, result, thresh, 1., THRESH_TOZERO);
-        
         
         Mat1b resb;
         result.convertTo(resb, CV_8U, 255);
@@ -47,9 +50,15 @@ public:
             /// Localizing the best match with minMaxLoc
             minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, mask);
             matchLoc = maxLoc;
-            boundingBox.push_back(cv::Rect2d(matchLoc.x,matchLoc.y,tp.cols,tp.rows));
+            int j=0;
+            for(;j<boundingBox.size();j++)
+            {
+                if (dist(boundingBox[j],matchLoc) < 1)
+                    break;
+            }
+            if(j == boundingBox.size())
+                boundingBox.push_back(cv::Rect2d(matchLoc.x,matchLoc.y,tp.cols,tp.rows));
         }
-
         return boundingBox;
     }
     virtual ~TpMatching(){};

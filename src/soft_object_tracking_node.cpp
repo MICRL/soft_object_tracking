@@ -47,7 +47,7 @@
 
 
 #define FPS 30
-#define QUEUQ_MAX_SIZE 3
+#define QUEUQ_MAX_SIZE 1
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, 
                                                         sensor_msgs::Image> syncPolicy;
@@ -94,7 +94,14 @@ static void onMouse( int event, int x, int y, int, void* )
     }
   }
 }
-
+// void print_time(){
+//     time_new = static_cast<double>( cv::getTickCount());
+//     time = static_cast<double>((time_new) - time_old)/cv::getTickFrequency();
+//     time_old = time_new;
+//     std::cout<<"time:"<<time<<"\n";
+// }
+        
+        
 //depth image to colormap for visualize
 cv::Mat getDepthColorMap(cv::Mat image_depth){
     double min;
@@ -171,7 +178,7 @@ cv::Point3f deproject(cv::Point pixel, float depth_origin, realsense_ros::camera
     point.z = depth;
     return point;
 }
-cv::Point3f getContourCentroid(std::vector<cv::Point> contour, cv::Point shift, cv::Mat image_depth, realsense_ros::camera_intrin * intrin,bool is_depth = false){
+cv::Point3f getContourCentroid(std::vector<cv::Point>& contour, cv::Point shift, cv::Mat image_depth, realsense_ros::camera_intrin * intrin,bool is_depth = false){
     cv::Point3f centroid;
     cv::Point centroid2d;
     double depth = 0;
@@ -186,7 +193,7 @@ cv::Point3f getContourCentroid(std::vector<cv::Point> contour, cv::Point shift, 
     for(int i=0;i<contour.size();i++)
     {
         //manually dilate
-        int dilate_max_size = 10;
+        int dilate_max_size = 3;
         int dilate_min_size = 3;
         int x = contour[i].x-centroid2d.x;
         int y = contour[i].y-centroid2d.y;
@@ -198,25 +205,30 @@ cv::Point3f getContourCentroid(std::vector<cv::Point> contour, cv::Point shift, 
                 std::cout<<contour[i].x<<" "<<contour[i].y<<" ";
             }
             std::cout<<"\ndp:"<<(int)contour.size()<<"\n";
+            std::vector<std::vector<cv::Point> >cs;
+            cs.push_back(contour);
+            cv::drawContours( imageRGB->image, cs, 0, cv::Scalar::all(255), 1.6, 8,cv::noArray(),INT_MAX,shift);
+            cv::imshow("imageDepthDilated",imageRGB->image);
             cv::waitKey(0);
         }
-        for(int j=dilate_min_size;j<dilate_max_size;j++)
+        for(int j=dilate_min_size;j<=dilate_max_size;j++)
         {
             double dilate_scale = j/std::sqrt(x*x+y*y);
             cv::Point dilated_point;
             dilated_point.x = int(dilate_scale * x);
             dilated_point.y = int(dilate_scale * y);
             double depth_temp = image_depth.at<ushort>(contour[i] + dilated_point + shift);
-            dilated_contour.push_back(contour[i] + dilated_point);
             if(depth_temp > 0 && depth_temp < (2/intrin->dev_depth_scale))
             {
                 depth += depth_temp;
                 valued_size += 1;
+                dilated_contour.push_back(contour[i] + dilated_point);
                 break;
             }
         }
     }
-    
+    //show dilated_contour
+//     contour = dilated_contour;
     if(valued_size == 0){
         std::cout<<"all contour points lose depth value ,contour size:"<<contour.size()<<"\n";
         cv::imwrite(ros::package::getPath("soft_object_tracking")+"/data/rgb.png",imageRGB->image);
@@ -225,7 +237,7 @@ cv::Point3f getContourCentroid(std::vector<cv::Point> contour, cv::Point shift, 
         std::vector<std::vector<cv::Point> >cs;
         cs.push_back(dilated_contour);
         cv::drawContours( falseColorsMap, cs, 0, cv::Scalar::all(255), 1.6, 8,cv::noArray(),INT_MAX,shift);
-        cv::imshow("imageDepth",falseColorsMap);
+        cv::imshow("imageDepthDilated",falseColorsMap);
         cv::waitKey(3);
         cv::waitKey(0);
     }
@@ -240,15 +252,15 @@ int main(int argc, char ** argv)
     ros::init(argc,argv, "soft_object_tracking_node", ros::init_options::NoSigintHandler);
     ros::NodeHandle node;
     std::string data_path = ros::package::getPath("soft_object_tracking")+"/data/tp.png";
-    message_filters::Subscriber<sensor_msgs::Image> imageRGB_sub(node, "/camera/image/rgb_611205001943", 2);
-	message_filters::Subscriber<sensor_msgs::Image> imageDepth_sub(node, "/camera/image/registered_depth__611205001943", 2);
+    message_filters::Subscriber<sensor_msgs::Image> imageRGB_sub(node, "/camera/image/rgb_611205001943", 1000);
+	message_filters::Subscriber<sensor_msgs::Image> imageDepth_sub(node, "/camera/image/registered_depth__611205001943", 1000);
 	message_filters::Synchronizer<syncPolicy> sync(syncPolicy(10),imageRGB_sub, imageDepth_sub);
 	sync.registerCallback(boost::bind(&chatterCallbackCVC, _1, _2));
     
-    ros::Subscriber subCameraInfoRGB = node.subscribe("/camera/camera_info/rgb_612205000197", 1, camera_info_rgb_callback);
+    ros::Subscriber subCameraInfoRGB = node.subscribe("/camera/camera_info/rgb_611205001943", 1, camera_info_rgb_callback);
     ros::Subscriber subCameraInfoDepth = node.subscribe("/camera/camera_info/depth_611205001943", 1, camera_info_depth_callback);
     
-    ros::Publisher centroid_publisher = node.advertise<std_msgs::Float64MultiArray> ("/soft_object_tracking/centroid", 1);
+    ros::Publisher centroid_publisher = node.advertise<std_msgs::Float64MultiArray> ("/soft_object_tracking/centroid", 2);
     
     init_camera_info_rgb();
     init_camera_info_depth();
@@ -256,8 +268,10 @@ int main(int argc, char ** argv)
     cv::namedWindow("canny");
     cv::namedWindow("imageRGB");
     cv::namedWindow("imageDepth");
+    cv::namedWindow("imageDepthDilated");
     cv::moveWindow("imageRGB",50,50);
     cv::moveWindow("imageDepth",50+640,50);
+    cv::moveWindow("imageDepthDilated",50+640+640,50);
     cv::setMouseCallback( "imageRGB", onMouse, 0 );
     cv::RNG rng(12345);
     cv::Mat tp = cv::imread(data_path);
@@ -268,10 +282,14 @@ int main(int argc, char ** argv)
     cv::Mat imageShowDepth;
     bool initialized = false;
     std::deque<std::vector<cv::Point3f> >centroid_buffer;
-
+    
+    double time_new;
+    double time_old = 0;
+    double time;
     ros::Rate rate(FPS);
     while(ros::ok())
     {
+
         if(received)
         {
             imageRGB->image.copyTo(imageShowRGB);
@@ -326,7 +344,7 @@ int main(int argc, char ** argv)
                     std::vector<cv::Point3f> centroid_frame;
                     for(int i=0;i<boundingBoxs.size();i++)
                     {
-                        int thresh_canny = 150;
+                        int thresh_canny = 80;
                         cv::Mat canny_src(imageRGB->image,boundingBoxs[i]);
                         cv::Mat canny_output;
                         std::vector<std::vector<cv::Point> > contours_origin;
@@ -356,6 +374,7 @@ int main(int argc, char ** argv)
 
                         if(contours.size() != 0)
                         {
+                            //approximateDP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //                             std::vector<std::vector<cv::Point> >hull;
 //                             hull.resize(1);
 //                             cv::convexHull( contours[max_index], hull[0],true,true);
@@ -402,9 +421,11 @@ int main(int argc, char ** argv)
             cv::imshow("imageRGB",imageShowRGB);
             cv::imshow("imageDepth",imageShowDepth);
             cv::waitKey(3);
-            
             received = false;
         }
+//         else
+//             std::cout<<"didn't receive image!!\n";
+        
         ros::spinOnce();
         rate.sleep();
     }
