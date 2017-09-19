@@ -47,7 +47,7 @@
 
 
 #define FPS 30
-#define QUEUQ_MAX_SIZE 1
+#define QUEUQ_MAX_SIZE 4
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, 
                                                         sensor_msgs::Image> syncPolicy;
@@ -124,6 +124,7 @@ cv::Mat getDepthColorMap(cv::Mat image_depth){
 
 //time to start tracking stage
 bool received = false;
+std::vector<cv::Mat> cls;
 void chatterCallbackCVC(const sensor_msgs::ImageConstPtr& imgRGB,const sensor_msgs::ImageConstPtr& imgDepth){
     imageRGB = cv_bridge::toCvCopy(imgRGB,sensor_msgs::image_encodings::BGR8);
     imageDepth = cv_bridge::toCvCopy(imgDepth,sensor_msgs::image_encodings::TYPE_16UC1);
@@ -193,32 +194,37 @@ cv::Point3f getContourCentroid(std::vector<cv::Point>& contour, cv::Point shift,
     for(int i=0;i<contour.size();i++)
     {
         //manually dilate
+        bool do_dilate = false;
         int dilate_max_size = 3;
         int dilate_min_size = 3;
         int x = contour[i].x-centroid2d.x;
         int y = contour[i].y-centroid2d.y;
 
-        if(x == 0 && y == 0){
-            std::cout<<"contour not closed\n";
-            for(int i=0;i<contour.size();i++)
-            {
-                std::cout<<contour[i].x<<" "<<contour[i].y<<" ";
-            }
-            std::cout<<"\ndp:"<<(int)contour.size()<<"\n";
-            std::vector<std::vector<cv::Point> >cs;
-            cs.push_back(contour);
-            cv::drawContours( imageRGB->image, cs, 0, cv::Scalar::all(255), 1.6, 8,cv::noArray(),INT_MAX,shift);
-            cv::imshow("imageDepthDilated",imageRGB->image);
-            cv::waitKey(0);
-        }
+//         if(x == 0 && y == 0){
+//             std::cout<<"contour not closed\n";
+//             for(int i=0;i<contour.size();i++)
+//             {
+//                 std::cout<<contour[i].x<<" "<<contour[i].y<<" ";
+//             }
+//             std::cout<<"\ndp:"<<(int)contour.size()<<"\n";
+//             std::vector<std::vector<cv::Point> >cs;
+//             cs.push_back(contour);
+//             cv::drawContours( imageRGB->image, cs, 0, cv::Scalar::all(255), 1.6, 8,cv::noArray(),INT_MAX,shift);
+//             cv::imshow("imageDepthDilated",imageRGB->image);
+//             cv::waitKey(0);
+//         }
         for(int j=dilate_min_size;j<=dilate_max_size;j++)
         {
             double dilate_scale = j/std::sqrt(x*x+y*y);
             cv::Point dilated_point;
             dilated_point.x = int(dilate_scale * x);
             dilated_point.y = int(dilate_scale * y);
-            double depth_temp = image_depth.at<ushort>(contour[i] + dilated_point + shift);
-            if(depth_temp > 0 && depth_temp < (2/intrin->dev_depth_scale))
+            double depth_temp;
+            if(do_dilate)
+                depth_temp = image_depth.at<ushort>(contour[i] + dilated_point + shift);
+            else
+                depth_temp = image_depth.at<ushort>(contour[i] + shift);
+            if(depth_temp > 0 && depth_temp < (1/intrin->dev_depth_scale))
             {
                 depth += depth_temp;
                 valued_size += 1;
@@ -303,11 +309,14 @@ int main(int argc, char ** argv)
             if(!initialized && tp.data != NULL)
             {
                 boundingBoxs = tp_matching.match(imageRGB->image,tp);
+                for(int i=0;i<boundingBoxs.size();i++)
+                    cv::rectangle(imageShowRGB,boundingBoxs[i],cv::Scalar::all(255),2,1);
                 std::vector<cv::Ptr<cv::Tracker> > algorithms;
                 for (int i = 0; i < boundingBoxs.size(); i++){
                     cv::TrackerKCF::Params kcfParams;
-                    kcfParams.detect_thresh = 0.08;
-                    kcfParams.max_patch_size=50*50;
+//                     kcfParams.detect_thresh = 0.08;
+                    kcfParams.detect_thresh = 0.20;
+                    kcfParams.max_patch_size=100*100;
                     
 //                     cv::TrackerBoosting::Params boostParams;
 //                     boostParams.numClassifiers = 100;
@@ -344,8 +353,12 @@ int main(int argc, char ** argv)
                     std::vector<cv::Point3f> centroid_frame;
                     for(int i=0;i<boundingBoxs.size();i++)
                     {
-                        int thresh_canny = 80;
-                        cv::Mat canny_src(imageRGB->image,boundingBoxs[i]);
+                        int thresh_canny = 20;
+                        cv::Mat canny_src_raw(imageRGB->image,boundingBoxs[i]);
+                        std::vector<cv::Mat> channels;
+                        cv::cvtColor(canny_src_raw,canny_src_raw,cv::COLOR_BGR2HSV);
+                        cv::split(canny_src_raw, channels);
+                        cv::Mat canny_src = channels[0];
                         cv::Mat canny_output;
                         std::vector<std::vector<cv::Point> > contours_origin;
                         std::vector<std::vector<cv::Point> > contours;
@@ -414,6 +427,10 @@ int main(int argc, char ** argv)
                     }
                     for(int i=0;i<centroid_smooth.data.size();i++)
                         centroid_smooth.data[i] /= centroid_buffer.size();
+
+
+
+//                         centroid_smooth.data[i] = 0;
                     //Publish
                     centroid_publisher.publish(centroid_smooth);
                 }
@@ -423,8 +440,8 @@ int main(int argc, char ** argv)
             cv::waitKey(3);
             received = false;
         }
-//         else
-//             std::cout<<"didn't receive image!!\n";
+        else
+            std::cout<<"didn't receive image!!\n";
         
         ros::spinOnce();
         rate.sleep();

@@ -7,8 +7,8 @@ using namespace std;
 namespace som{
 class TpMatching{
 private:
-    int mechod = CV_TM_CCORR_NORMED;
-    double thresh = 0.85;
+    int mechod = CV_TM_CCOEFF_NORMED;
+    double thresh = 0.7;
     cv::Mat result;
     int dist(Rect2d p1, Point p2)
     {
@@ -32,7 +32,6 @@ public:
         /// Do the Matching and Normalize
         matchTemplate( src, tp, result, mechod );
         normalize( result, result, 0, 1, NORM_MINMAX, -1, Mat() );
-        double thresh = 0.90;
         threshold(result, result, thresh, 1., THRESH_TOZERO);
         
         Mat1b resb;
