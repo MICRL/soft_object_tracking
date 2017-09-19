@@ -11,7 +11,7 @@ find_package(catkin REQUIRED roscpp std_msgs cv_bridge message_filters roslib re
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
-find_package(PCL 1.7 REQUIRED) 
+find_package(PCL 1.7 REQUIRED)
 find_package(OpenCV 3.3.0 REQUIRED)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -134,6 +134,8 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(${PROJECT_NAME}_node src/soft_object_tracking_node.cpp)
 add_executable(${PROJECT_NAME}_towel_node src/soft_object_tracking_towel_node.cpp)
+add_executable(${PROJECT_NAME}_curvature_node src/soft_object_tracking_curvature_node.cpp)
+add_executable(${PROJECT_NAME}_record_node src/record_pcd.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -148,13 +150,21 @@ add_dependencies(${PROJECT_NAME}_towel_node ${${PROJECT_NAME}_EXPORTED_TARGETS} 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
-  ${PCL_LIBRARIES} 
+  ${PCL_LIBRARIES}
   ${OpenCV_LIBRARIES}
 )
 target_link_libraries(${PROJECT_NAME}_towel_node
   ${catkin_LIBRARIES}
-  ${PCL_LIBRARIES} 
+  ${PCL_LIBRARIES}
   ${OpenCV_LIBRARIES}
+)
+target_link_libraries(${PROJECT_NAME}_curvature_node
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+target_link_libraries(${PROJECT_NAME}_record_node
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
 )
 
 #############
